@@ -15,6 +15,9 @@ import time
 import logging
 import torch  # Import torch untuk pengecekan CUDA
 
+nltk.download('punkt')
+nltk.download('punkt_tab')
+
 # Konfigurasi Logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -143,10 +146,12 @@ def answer_question(question: str, chunks: list[str], index: faiss.Index, embedd
 
         # Gunakan Cross-Encoder untuk memilih chunk terbaik
         pairs = [(question, chunk) for chunk in candidates]
-        scores = cross_encoder_model.predict(pairs)
-        top_indices = np.argsort(scores)[::-1][:top_n]
+        scores = cross_encoder_model.predict_proba(pairs)[:, 1]  # Gunakan predict_proba()
 
+        # Pilih chunk dengan skor tertinggi
+        top_indices = np.argsort(scores)[::-1][:top_n]
         context = "\n".join([candidates[i] for i in top_indices])
+
         return context
     except Exception as e:
         logging.exception(f"Error in answer_question: {e}")
