@@ -49,7 +49,7 @@ try:
 
     # Inisialisasi model
     EMBEDDER = SentenceTransformer("paraphrase-MiniLM-L3-v2")
-    CROSS_ENCODER_MODEL = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
+    CROSS_ENCODER_MODEL = CrossEncoder("cross-encoder/ms-marco-TinyBERT-L-6")
 
     # Load embeddings dan FAISS index jika tersedia
     if os.path.exists(EMBEDDING_FILE) and os.path.exists(FAISS_INDEX_FILE):
@@ -95,11 +95,11 @@ def answer_question(question: str, chunks: list[str], index: faiss.Index, embedd
             return "Maaf, saya tidak dapat menemukan informasi yang sesuai."
 
         question_embedding = embedder.encode([question], convert_to_numpy=True)
-        D, I = index.search(question_embedding, min(top_n * 2, len(CHUNK_EMBEDDINGS)))
+        D, I = index.search(question_embedding, min(top_n * 1.5, len(CHUNK_EMBEDDINGS)))
         candidates = [chunks[i] for i in I[0]]
 
         pairs = [(question, chunk) for chunk in candidates]
-        scores = cross_encoder_model.predict(pairs)
+        scores = cross_encoder_model.predict(pairs, batch_size=4)
         top_indices = np.argsort(scores)[::-1][:top_n]
         return "\n".join([candidates[i] for i in top_indices])
     except Exception as e:
