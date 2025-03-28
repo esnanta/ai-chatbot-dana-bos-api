@@ -99,7 +99,7 @@ def answer_question(question: str, chunks: list[str], index: faiss.Index, embedd
         candidates = [chunks[i] for i in I[0]]
 
         pairs = [(question, chunk) for chunk in candidates]
-        scores = cross_encoder_model.predict(pairs, batch_size=4)
+        scores = cross_encoder_model.predict(pairs, batch_size=8)
         top_indices = np.argsort(scores)[::-1][:top_n]
         return "\n".join([candidates[i] for i in top_indices])
     except Exception as e:
