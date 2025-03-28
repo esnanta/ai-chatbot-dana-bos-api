@@ -30,7 +30,7 @@ Original file is located at
 # Import Library
 """
 
-!pip install pymupdf nltk transformers sentence-transformers faiss-cpu
+# !pip install pymupdf nltk transformers sentence-transformers faiss-cpu
 
 import os
 import re
