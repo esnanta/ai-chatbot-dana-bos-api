@@ -8,12 +8,12 @@ import nltk
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from nltk import sent_tokenize
-from nltk.corpus import stopwords
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sentence_transformers import SentenceTransformer, CrossEncoder
 from pydantic import BaseModel
 import time
 import logging
+import torch  # Import torch untuk pengecekan CUDA
 
 # Konfigurasi Logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -42,24 +42,17 @@ logging.info("Loading models and data...")
 start_time = time.time()
 
 try:
-    # Muat stopwords Bahasa Indonesia
-    try:
-        stopwords_id = list(stopwords.words("indonesian"))
-    except LookupError:
-        logging.info("Downloading 'stopwords' from nltk...")
-        nltk.download("stopwords")
-        stopwords_id = list(stopwords.words("indonesian"))
-    vectorizer_temp = TfidfVectorizer()
-    tokenizer = vectorizer_temp.build_tokenizer()
-    STOPWORDS_ID = [" ".join(tokenizer(word)) for word in stopwords_id]
-
     # Muat chunks dari file
     with open(CHUNKS_FILE, "r", encoding="utf-8") as f:
         ALL_CHUNKS = json.load(f)
 
     # Inisialisasi model SentenceTransformer dan CrossEncoder
-    EMBEDDER = SentenceTransformer("paraphrase-MiniLM-L3-v2")
-    CROSS_ENCODER_MODEL = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
+    device = 'cuda' if torch.cuda.is_available() else 'cpu' # Tentukan device
+    logging.info(f"Using device: {device}")
+
+    EMBEDDER = SentenceTransformer("paraphrase-MiniLM-L3-v2").to(device)
+    CROSS_ENCODER_MODEL = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2").to(device)
+
 
     # Load embeddings dan FAISS index dari file jika ada, jika tidak, buat baru
     if os.path.exists(EMBEDDING_FILE) and os.path.exists(FAISS_INDEX_FILE):
@@ -96,18 +89,18 @@ except Exception as e:
     raise  # Re-raise exception agar aplikasi berhenti saat startup
 
 # Fungsi Utilitas
-def extract_keywords(question, stopwords_id, top_n=5):
+def extract_keywords(question, top_n=5):
     """Ekstraksi kata kunci menggunakan TF-IDF."""
-    vectorizer = TfidfVectorizer(stop_words=stopwords_id)
+    vectorizer = TfidfVectorizer()
     tfidf_matrix = vectorizer.fit_transform([question])
     feature_array = np.array(vectorizer.get_feature_names_out())
     tfidf_sorting = np.argsort(tfidf_matrix.toarray()).flatten()[::-1]
     top_keywords = feature_array[tfidf_sorting][:top_n]
     return set(top_keywords)
 
-def filter_chunks_by_keywords(question, chunks, stopwords_id):
+def filter_chunks_by_keywords(question, chunks):
     """Filter chunks berdasarkan kata kunci."""
-    keywords = extract_keywords(question, stopwords_id)
+    keywords = extract_keywords(question)
     filtered_chunks = [chunk for chunk in chunks if any(keyword.lower() in chunk.lower() for keyword in keywords)]
     return filtered_chunks if filtered_chunks else chunks
 
@@ -127,14 +120,14 @@ def post_process_answer(answer):
     return bulleted_list
 
 # Fungsi Utama: Menjawab Pertanyaan
-def answer_question(question: str, chunks: list[str], index: faiss.Index, embedder: SentenceTransformer, cross_encoder_model: CrossEncoder, stopwords_id: list[str], top_n: int = 3) -> str:
+def answer_question(question: str, chunks: list[str], index: faiss.Index, embedder: SentenceTransformer, cross_encoder_model: CrossEncoder, top_n: int = 3) -> str:
     """Menjawab pertanyaan berdasarkan knowledge base."""
     try:
         if not ALL_CHUNKS or not INDEX or not EMBEDDER or not CROSS_ENCODER_MODEL:
             raise RuntimeError("Models or data not loaded properly.")
 
         # Filter chunk berdasarkan kata kunci pertanyaan
-        filtered_chunks = filter_chunks_by_keywords(question, chunks, stopwords_id)
+        filtered_chunks = filter_chunks_by_keywords(question, chunks)
 
         if not filtered_chunks:
             return "Maaf, saya tidak dapat menemukan informasi yang sesuai."
@@ -178,7 +171,6 @@ async def ask_chatbot(request: QuestionRequest):
             INDEX,
             EMBEDDER,
             CROSS_ENCODER_MODEL,
-            STOPWORDS_ID,
             top_n=3
         )
         processed_answer = post_process_answer(raw_answer)
