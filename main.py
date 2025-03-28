@@ -49,7 +49,7 @@ try:
 
     # Inisialisasi model
     EMBEDDER = SentenceTransformer("paraphrase-MiniLM-L3-v2")
-    CROSS_ENCODER_MODEL = CrossEncoder("cross-encoder/ms-marco-TinyBERT-L-6")
+    CROSS_ENCODER_MODEL = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
 
     # Load embeddings dan FAISS index jika tersedia
     if os.path.exists(EMBEDDING_FILE) and os.path.exists(FAISS_INDEX_FILE):
