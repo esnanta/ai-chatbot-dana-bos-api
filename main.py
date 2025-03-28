@@ -34,6 +34,8 @@ app.add_middleware(
 BASE_DIR = "knowledge_base"
 CHUNKS_FILE = os.path.join(BASE_DIR, "chunks.json")
 EMBEDDING_DIMENSION = 384  # Dimensi embedding model MiniLM
+EMBEDDING_FILE = os.path.join(BASE_DIR, "chunk_embeddings.npy")
+FAISS_INDEX_FILE = os.path.join(BASE_DIR, "faiss_index.bin")
 
 # Muat data dan model saat aplikasi dimulai (Eager Loading)
 logging.info("Loading models and data...")
@@ -56,13 +58,24 @@ try:
         ALL_CHUNKS = json.load(f)
 
     # Inisialisasi model SentenceTransformer dan CrossEncoder
-    EMBEDDER = SentenceTransformer("all-MiniLM-L6-v2")
+    EMBEDDER = SentenceTransformer("paraphrase-MiniLM-L3-v2")
     CROSS_ENCODER_MODEL = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
 
-    # Inisialisasi dan latih index FAISS
-    INDEX = faiss.IndexFlatL2(EMBEDDING_DIMENSION)
-    CHUNK_EMBEDDINGS = EMBEDDER.encode(ALL_CHUNKS, convert_to_numpy=True)
-    INDEX.add(CHUNK_EMBEDDINGS)
+    # Load embeddings dan FAISS index dari file jika ada, jika tidak, buat baru
+    if os.path.exists(EMBEDDING_FILE) and os.path.exists(FAISS_INDEX_FILE):
+        CHUNK_EMBEDDINGS = np.load(EMBEDDING_FILE)
+        INDEX = faiss.read_index(FAISS_INDEX_FILE)
+        logging.info(f"Loaded embeddings and FAISS index from file.")
+    else:
+        # Inisialisasi dan latih index FAISS
+        INDEX = faiss.IndexFlatL2(EMBEDDING_DIMENSION)
+        CHUNK_EMBEDDINGS = EMBEDDER.encode(ALL_CHUNKS, convert_to_numpy=True)
+        INDEX.add(CHUNK_EMBEDDINGS)
+
+        # Simpan embeddings dan FAISS index ke file
+        np.save(EMBEDDING_FILE, CHUNK_EMBEDDINGS)
+        faiss.write_index(INDEX, FAISS_INDEX_FILE)
+        logging.info(f"Created and saved embeddings and FAISS index.")
 
     end_time = time.time()
     logging.info(f"Models and data loaded in {end_time - start_time:.2f} seconds.")
@@ -114,7 +127,7 @@ def post_process_answer(answer):
     return bulleted_list
 
 # Fungsi Utama: Menjawab Pertanyaan
-def answer_question(question, chunks, index, embedder, cross_encoder_model, stopwords_id, top_n=3):
+def answer_question(question: str, chunks: list[str], index: faiss.Index, embedder: SentenceTransformer, cross_encoder_model: CrossEncoder, stopwords_id: list[str], top_n: int = 3) -> str:
     """Menjawab pertanyaan berdasarkan knowledge base."""
     try:
         if not ALL_CHUNKS or not INDEX or not EMBEDDER or not CROSS_ENCODER_MODEL:
@@ -123,19 +136,17 @@ def answer_question(question, chunks, index, embedder, cross_encoder_model, stop
         # Filter chunk berdasarkan kata kunci pertanyaan
         filtered_chunks = filter_chunks_by_keywords(question, chunks, stopwords_id)
 
-        # Lakukan embedding hanya pada chunk yang relevan
-        filtered_embeddings = embedder.encode(filtered_chunks, convert_to_numpy=True)
+        if not filtered_chunks:
+            return "Maaf, saya tidak dapat menemukan informasi yang sesuai."
 
-        # Inisialisasi dan latih index FAISS dengan embedding yang telah di filter
-        index_filtered = faiss.IndexFlatL2(EMBEDDING_DIMENSION)
-        index_filtered.add(filtered_embeddings)
-
-        # Cari similarity dengan FAISS
+        # Lakukan embedding hanya pada pertanyaan (bukan ulang chunk)
         question_embedding = embedder.encode([question], convert_to_numpy=True)
-        D, I = index_filtered.search(question_embedding, min(top_n * 2, len(filtered_chunks)))
+
+        # Cari similarity dengan FAISS yang sudah dimuat dari file
+        D, I = index.search(question_embedding, min(top_n * 2, len(CHUNK_EMBEDDINGS)))
 
         # Ambil kandidat chunk berdasarkan FAISS
-        candidates = [filtered_chunks[i] for i in I[0]]
+        candidates = [chunks[i] for i in I[0]]
 
         # Gunakan Cross-Encoder untuk memilih chunk terbaik
         pairs = [(question, chunk) for chunk in candidates]

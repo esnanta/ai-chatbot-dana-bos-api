@@ -38,13 +38,13 @@ import json
 import fitz
 import nltk
 import faiss
+import requests
 import numpy as np
 
 from nltk import sent_tokenize
 from nltk.corpus import stopwords
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sentence_transformers import SentenceTransformer, CrossEncoder
-from google.colab import drive
 
 # Download resource NLTK
 nltk.download('punkt')
@@ -53,22 +53,36 @@ nltk.download('stopwords')
 
 """# Data Gathering"""
 
-# Data Gathering
 # ===============================
-# 1. MOUNT GOOGLE DRIVE & CEK FILES
+# 1. DATA GATHERING
 # ===============================
 
-# Mount Google Drive
-drive.mount('/content/drive')
+GITHUB_RAW_URL = "https://raw.githubusercontent.com/esnanta/ai-chatbot-dana-bos-api/main/knowledge_base/"
+FILES = [
+    "Permendikbudriset_No_63_Tahun_2023.pdf",
+]
 
-# Path ke direktori penyimpanan file PDF
-pdf_dir = "/content/drive/My Drive/Colab Notebooks/AI Chatbot Berbasis Regulasi"
+# Direktori penyimpanan di Colab
+pdf_dir = "/content/pdf_files"
+os.makedirs(pdf_dir, exist_ok=True)
 
-# Cek apakah direktori ada
-if not os.path.exists(pdf_dir):
-    raise FileNotFoundError(f"Direktori {pdf_dir} tidak ditemukan! Periksa kembali path-nya.")
-else:
-    print(f"Direktori ditemukan! Daftar file PDF: {os.listdir(pdf_dir)}")
+# Download file PDF dari GitHub
+for file in FILES:
+    file_url = GITHUB_RAW_URL + file
+    try:
+        response = requests.get(file_url)
+        response.raise_for_status()  # Raise HTTPError for bad responses (4xx or 5xx)
+        with open(os.path.join(pdf_dir, file), "wb") as f:
+            f.write(response.content)
+        print(f"✅ Berhasil mengunduh: {file}")
+    except requests.exceptions.RequestException as e:
+        print(f"❌ Gagal mengunduh {file}: {e}")
+    except Exception as e:
+        print(f"❌ Kesalahan tak terduga saat mengunduh {file}: {e}")
+
+
+# Cek file yang telah diunduh
+print(f"Daftar file di {pdf_dir}: {os.listdir(pdf_dir)}")
 
 # ===============================
 # 2. EKSTRAKSI TEKS DARI FILE PDF
@@ -77,11 +91,15 @@ else:
 # --- PDF Text Extraction ---
 def extract_text_from_pdf(pdf_path):
     """Extracts text from a PDF file."""
-    doc = fitz.open(pdf_path)
-    text = ""
-    for page in doc:
-        text += page.get_text("text") + "\n"
-    return text.strip()
+    try:
+        with fitz.open(pdf_path) as doc:  # Use context manager for safety
+            text = ""
+            for page in doc:
+                text += page.get_text("text") + "\n"
+        return text.strip()
+    except Exception as e:
+        raise RuntimeError(f"Gagal mengekstrak teks dari {pdf_path}: {e}")
+
 
 pdf_files = [f for f in os.listdir(pdf_dir) if f.endswith(".pdf")]
 pdf_texts = {}
@@ -91,9 +109,15 @@ for pdf_file in pdf_files:
     try:
         text = extract_text_from_pdf(pdf_path)
         pdf_texts[pdf_file] = text
-        print(f"Extracted text from: {pdf_file}")
+        print(f"✅ Berhasil mengekstrak teks dari: {pdf_file}")
+    except RuntimeError as re:
+        print(f"❌ Kesalahan saat ekstraksi: {re}")
     except Exception as e:
-        print(f"Error extracting text from {pdf_file}: {e}")
+        print(f"❌ Kesalahan tidak terduga pada {pdf_file}: {e}")
+
+
+# Cek hasil ekstraksi
+print(f"\nTotal file yang berhasil diekstrak: {len(pdf_texts)}")
 
 """# Preprocessing Data"""
 
@@ -189,7 +213,11 @@ for pdf, text in cleaned_texts.items():
 
 print(f"Total chunks: {len(all_chunks)}")
 
-"""# SAVING DATA"""
+"""# SAVING DATA #1
+
+* Chunk File
+* Cleaned Texts File
+"""
 
 # ===============================
 # 5. SAVING DATA
@@ -222,25 +250,81 @@ except Exception as e:
 """# LOAD MODEL"""
 
 # ===============================
-# 6. MODEL
+# 6. MODEL & FAISS INDEXING
 # ===============================
 
-# Load Sentence Transformer model
+# Load model
 cross_encoder_model = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
-embedder = SentenceTransformer("all-MiniLM-L6-v2")
-
-# ===============================
-# 7. FAISS INDEXING
-# ===============================
+embedder = SentenceTransformer("paraphrase-MiniLM-L3-v2")
 
 d = 384  # Dimensi embedding dari model MiniLM
 index = faiss.IndexFlatL2(d)
 chunk_embeddings = embedder.encode(all_chunks, convert_to_numpy=True)
 index.add(chunk_embeddings)
 
-# --- Question Answering ---
+"""# SAVING DATA #2
 
-stopwords_id = list(stopwords.words("indonesian"))
+* Embedding File
+* Faiss Index_file
+"""
+
+# ===============================
+# 7. SAVE EMBEDDINGS & INDEX
+# ===============================
+
+# Define file paths for saving data
+embedding_file = os.path.join(pdf_dir, "chunk_embeddings.npy")
+faiss_index_file = os.path.join(pdf_dir, "faiss_index.bin")
+
+# --------------------------------------
+# a. Saving the embedding as .npy
+# --------------------------------------
+try:
+    np.save(embedding_file, chunk_embeddings)
+    print(f"Embedding saved to: {embedding_file}")
+except Exception as e:
+    print(f"Error saving embeddings: {e}")
+
+# --------------------------------------
+# b. Saving FAISS file
+# --------------------------------------
+try:
+    faiss.write_index(index, faiss_index_file)
+    print(f"FAISS index saved to: {faiss_index_file}")
+except Exception as e:
+    print(f"Error saving FAISS index: {e}")
+
+"""# LOAD EMBEDDINGS & INDEX"""
+
+# ===============================
+# 8. LOAD EMBEDDINGS & INDEX
+# ===============================
+
+# Load embeddings dari file
+if os.path.exists(embedding_file):
+    chunk_embeddings = np.load(embedding_file)
+    print(f"Loaded embeddings from: {embedding_file}")
+else:
+    raise FileNotFoundError(f"Embedding file {embedding_file} not found.")
+
+# Load FAISS index dari file
+if os.path.exists(faiss_index_file):
+    index = faiss.read_index(faiss_index_file)
+    print(f"Loaded FAISS index from: {faiss_index_file}")
+else:
+    raise FileNotFoundError(f"FAISS index file {faiss_index_file} not found.")
+
+"""# Answer"""
+
+# ===============================
+# 9. Answer Function
+# ===============================
+
+try:
+    stopwords_id = list(stopwords.words("indonesian"))
+except LookupError:
+    nltk.download("stopwords")
+    stopwords_id = list(stopwords.words("indonesian"))
 
 # Normalisasi stopwords agar cocok dengan tokenizer Scikit-learn
 vectorizer_temp = TfidfVectorizer()
@@ -249,8 +333,12 @@ stopwords_id = [" ".join(tokenizer(word)) for word in stopwords_id]  # Pastikan 
 
 def extract_keywords(question, top_n=5):
     """Mengekstrak kata kunci dari pertanyaan menggunakan TF-IDF (Bahasa Indonesia)"""
-    vectorizer = TfidfVectorizer(stop_words=stopwords_id)  # Gunakan stopwords ID yang sudah dinormalisasi
+    vectorizer = TfidfVectorizer(stop_words=stopwords_id)
     tfidf_matrix = vectorizer.fit_transform([question])
+
+    # Pastikan tidak ada error jika pertanyaan terlalu pendek
+    if tfidf_matrix.shape[1] == 0:
+        return set()
 
     feature_array = np.array(vectorizer.get_feature_names_out())
     tfidf_sorting = np.argsort(tfidf_matrix.toarray()).flatten()[::-1]
@@ -261,6 +349,10 @@ def extract_keywords(question, top_n=5):
 def filter_chunks_by_keywords(question, chunks):
     """Memilih hanya chunk yang mengandung kata kunci dari pertanyaan"""
     keywords = extract_keywords(question)
+
+    if not keywords:  # Jika tidak ada kata kunci, gunakan semua chunk
+        return chunks
+
     filtered_chunks = [chunk for chunk in chunks if any(keyword.lower() in chunk.lower() for keyword in keywords)]
     return filtered_chunks if filtered_chunks else chunks  # Jika kosong, tetap gunakan semua chunk
 
@@ -268,19 +360,17 @@ def answer_question(question, chunks, top_n=3):
     # Filter chunk berdasarkan kata kunci pertanyaan
     filtered_chunks = filter_chunks_by_keywords(question, chunks)
 
-    # Lakukan embedding hanya pada chunk yang relevan
-    filtered_embeddings = embedder.encode(filtered_chunks, convert_to_numpy=True)
+    if not filtered_chunks:
+        return "Maaf, saya tidak dapat menemukan informasi yang sesuai."
 
-    # Buat indeks FAISS baru untuk chunk yang sudah difilter
-    index_filtered = faiss.IndexFlatL2(d)
-    index_filtered.add(filtered_embeddings)
-
-    # Cari similarity dengan FAISS
+    # Lakukan embedding hanya pada pertanyaan (bukan ulang chunk)
     question_embedding = embedder.encode([question], convert_to_numpy=True)
-    D, I = index_filtered.search(question_embedding, min(top_n * 2, len(filtered_chunks)))
+
+    # Cari similarity dengan FAISS yang sudah dimuat dari file
+    D, I = index.search(question_embedding, min(top_n * 2, len(chunk_embeddings)))
 
     # Ambil kandidat chunk berdasarkan FAISS
-    candidates = [filtered_chunks[i] for i in I[0]]
+    candidates = [chunks[i] for i in I[0]]
 
     # Gunakan Cross-Encoder untuk memilih chunk terbaik
     pairs = [(question, chunk) for chunk in candidates]
@@ -309,26 +399,16 @@ Chatbot menampilkan mengambil dan menampilkan 3 chunk teks yang paling mirip den
 # 7. TESTING CHATBOT
 # ===============================
 
-# --- Example Usage ---
-question = "Apakah Dana BOSP dapat digunakan untuk pengembangan sumber daya manusia?"  # More focused question
-raw_answer = answer_question(question, all_chunks, top_n=3)
-processed_answer = post_process_answer(raw_answer)
+# Contoh pertanyaan
+test_questions = [
+    "Apakah Dana BOSP dapat digunakan untuk pengembangan sumber daya manusia?",
+    "Untuk apa saja Dana BOS Kinerja dapat digunakan?",
+    "Kapan laporan realisasi penggunaan Dana BOSP harus disampaikan?"
+]
 
-print(f"Pertanyaan: {question}")
-print(f"Jawaban:\n{processed_answer}")
+for question in test_questions:
+    raw_answer = answer_question(question, all_chunks, top_n=3)
+    processed_answer = post_process_answer(raw_answer)
 
-# --- Example Usage ---
-question = "Untuk apa saja Dana BOS Kinerja dapat digunakan?"  # More focused question
-raw_answer = answer_question(question, all_chunks, top_n=3)
-processed_answer = post_process_answer(raw_answer)
-
-print(f"Pertanyaan: {question}")
-print(f"Jawaban:\n{processed_answer}")
-
-# --- Example Usage ---
-question = "Kapan laporan realisasi penggunaan Dana BOSP harus disampaikan?"  # More focused question
-raw_answer = answer_question(question, all_chunks, top_n=3)
-processed_answer = post_process_answer(raw_answer)
-
-print(f"Pertanyaan: {question}")
-print(f"Jawaban:\n{processed_answer}")
+    print(f"\n🔹 **Pertanyaan:** {question}")
+    print(f"🔸 **Jawaban:**\n{processed_answer}\n")
