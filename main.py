@@ -31,7 +31,7 @@ app.add_middleware(
 )
 
 # Konstanta dan Inisialisasi Global
-BASE_DIR = "api/knowledge_base"
+BASE_DIR = "knowledge_base"
 CHUNKS_FILE = os.path.join(BASE_DIR, "chunks.json")
 EMBEDDING_DIMENSION = 384  # Dimensi embedding model MiniLM
 
