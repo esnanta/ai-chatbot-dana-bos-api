@@ -30,7 +30,7 @@ Original file is located at
 # Import Library
 """
 
-# !pip install pymupdf nltk transformers sentence-transformers faiss-cpu
+!pip install pymupdf nltk transformers sentence-transformers faiss-cpu
 
 import os
 import re
@@ -254,13 +254,33 @@ except Exception as e:
 # ===============================
 
 # Load model
-cross_encoder_model = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
+cross_encoder_model = CrossEncoder("cross-encoder/ms-marco-TinyBERT-L-6")
 embedder = SentenceTransformer("paraphrase-MiniLM-L3-v2")
 
-d = 384  # Dimensi embedding dari model MiniLM
-index = faiss.IndexFlatL2(d)
+# Encode semua chunk teks
 chunk_embeddings = embedder.encode(all_chunks, convert_to_numpy=True)
+
+d = 384  # Dimensi embedding dari model MiniLM
+
+# Cluster tidak boleh lebih dari jumlah data
+# Jika data lebih banyak, tetap gunakan 100 cluster.
+NLIST = min(100, len(chunk_embeddings) // 4)
+NPROBE = 10  # Jumlah cluster yang dicari saat query
+
+
+
+# Buat quantizer dan FAISS IVF index
+quantizer = faiss.IndexFlatL2(d)  # Quantizer untuk clustering
+index = faiss.IndexIVFFlat(quantizer, d, NLIST, faiss.METRIC_L2)
+
+# Training FAISS IVF dengan semua embeddings
+if not index.is_trained:
+    print("Training FAISS IVF index...")
+    index.train(chunk_embeddings)
+
+# Tambahkan embeddings ke FAISS Index
 index.add(chunk_embeddings)
+print(f"FAISS IVF Index siap dengan {index.ntotal} data.")
 
 """# SAVING DATA #2
 
@@ -290,7 +310,7 @@ except Exception as e:
 # --------------------------------------
 try:
     faiss.write_index(index, faiss_index_file)
-    print(f"FAISS index saved to: {faiss_index_file}")
+    print(f"FAISS IVF index saved to: {faiss_index_file}")
 except Exception as e:
     print(f"Error saving FAISS index: {e}")
 
@@ -317,37 +337,24 @@ else:
 """# Answer"""
 
 # ===============================
-# 9. Answer Function
+# 9. FUNGSI UTILITAS
 # ===============================
 
-try:
-    stopwords_id = list(stopwords.words("indonesian"))
-except LookupError:
-    nltk.download("stopwords")
-    stopwords_id = list(stopwords.words("indonesian"))
-
-# Normalisasi stopwords agar cocok dengan tokenizer Scikit-learn
-vectorizer_temp = TfidfVectorizer()
-tokenizer = vectorizer_temp.build_tokenizer()
-stopwords_id = [" ".join(tokenizer(word)) for word in stopwords_id]  # Pastikan konsistensi
-
+# Fungsi untuk ekstraksi kata kunci tanpa stopwords
 def extract_keywords(question, top_n=5):
-    """Mengekstrak kata kunci dari pertanyaan menggunakan TF-IDF (Bahasa Indonesia)"""
-    vectorizer = TfidfVectorizer(stop_words=stopwords_id)
+    vectorizer = TfidfVectorizer()
     tfidf_matrix = vectorizer.fit_transform([question])
 
-    # Pastikan tidak ada error jika pertanyaan terlalu pendek
     if tfidf_matrix.shape[1] == 0:
         return set()
 
     feature_array = np.array(vectorizer.get_feature_names_out())
     tfidf_sorting = np.argsort(tfidf_matrix.toarray()).flatten()[::-1]
 
-    top_keywords = feature_array[tfidf_sorting][:top_n]
-    return set(top_keywords)
+    return set(feature_array[tfidf_sorting][:top_n])
 
+# Fungsi untuk memfilter chunk berdasarkan kata kunci dari pertanyaan
 def filter_chunks_by_keywords(question, chunks):
-    """Memilih hanya chunk yang mengandung kata kunci dari pertanyaan"""
     keywords = extract_keywords(question)
 
     if not keywords:  # Jika tidak ada kata kunci, gunakan semua chunk
@@ -356,29 +363,29 @@ def filter_chunks_by_keywords(question, chunks):
     filtered_chunks = [chunk for chunk in chunks if any(keyword.lower() in chunk.lower() for keyword in keywords)]
     return filtered_chunks if filtered_chunks else chunks  # Jika kosong, tetap gunakan semua chunk
 
-def answer_question(question, chunks, top_n=3):
-    # Filter chunk berdasarkan kata kunci pertanyaan
-    filtered_chunks = filter_chunks_by_keywords(question, chunks)
+# Fungsi utama untuk menjawab pertanyaan dengan FAISS IVF
+def answer_question(question, chunks, index_faiss, embedder, cross_encoder_model, top_n=3):
 
+    filtered_chunks = filter_chunks_by_keywords(question, chunks)
     if not filtered_chunks:
         return "Maaf, saya tidak dapat menemukan informasi yang sesuai."
 
-    # Lakukan embedding hanya pada pertanyaan (bukan ulang chunk)
+    # Embedding hanya untuk pertanyaan
     question_embedding = embedder.encode([question], convert_to_numpy=True)
 
-    # Cari similarity dengan FAISS yang sudah dimuat dari file
-    D, I = index.search(question_embedding, min(top_n * 2, len(chunk_embeddings)))
+    # Atur nprobe sebelum mencari
+    index_faiss.nprobe = NPROBE
 
-    # Ambil kandidat chunk berdasarkan FAISS
-    candidates = [chunks[i] for i in I[0]]
+    # Cari similarity dengan FAISS IVF
+    D, I = index_faiss.search(question_embedding, min(top_n * 2, len(chunks)))
+    candidates = [chunks[i] for i in I[0] if i < len(chunks)]  # Pastikan indeks valid
 
     # Gunakan Cross-Encoder untuk memilih chunk terbaik
     pairs = [(question, chunk) for chunk in candidates]
     scores = cross_encoder_model.predict(pairs)
     top_indices = np.argsort(scores)[::-1][:top_n]
 
-    context = "\n".join([candidates[i] for i in top_indices])
-    return context
+    return "\n".join([candidates[i] for i in top_indices])
 
 def post_process_answer(answer):
     sentences = sent_tokenize(answer)
@@ -407,7 +414,7 @@ test_questions = [
 ]
 
 for question in test_questions:
-    raw_answer = answer_question(question, all_chunks, top_n=3)
+    raw_answer = answer_question(question, all_chunks, index, embedder, cross_encoder_model, top_n=3)
     processed_answer = post_process_answer(raw_answer)
 
     print(f"\n🔹 **Pertanyaan:** {question}")

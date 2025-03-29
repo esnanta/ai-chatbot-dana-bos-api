@@ -32,14 +32,21 @@ app.add_middleware(
     allow_headers=["Content-Type"],
 )
 
-# Konstanta dan Inisialisasi Global
+# ===============================
+# 1. KONSTANTA & INISIALISASI GLOBAL
+# ===============================
+
 BASE_DIR = "knowledge_base"
 CHUNKS_FILE = os.path.join(BASE_DIR, "chunks.json")
 EMBEDDING_DIMENSION = 384  # Dimensi embedding model MiniLM
 EMBEDDING_FILE = os.path.join(BASE_DIR, "chunk_embeddings.npy")
 FAISS_INDEX_FILE = os.path.join(BASE_DIR, "faiss_index.bin")
+NPROBE = 5  # Jumlah cluster yang dicari saat query
 
-# Muat data dan model saat aplikasi dimulai (Eager Loading)
+# ===============================
+# 2. MUAT DATA & MODEL
+# EAGER LOADING
+# ===============================
 logging.info("Loading models and data...")
 start_time = time.time()
 
@@ -51,18 +58,14 @@ try:
     EMBEDDER = SentenceTransformer("paraphrase-MiniLM-L3-v2")
     CROSS_ENCODER_MODEL = CrossEncoder("cross-encoder/ms-marco-TinyBERT-L-6")
 
-    # Load embeddings dan FAISS index jika tersedia
+    # Load FAISS IVF index jika tersedia
     if os.path.exists(EMBEDDING_FILE) and os.path.exists(FAISS_INDEX_FILE):
         CHUNK_EMBEDDINGS = np.load(EMBEDDING_FILE)
-        INDEX = faiss.read_index(FAISS_INDEX_FILE)
-        logging.info("Loaded embeddings and FAISS index from file.")
+        INDEX_FAISS = faiss.read_index(FAISS_INDEX_FILE)
+        INDEX_FAISS.nprobe = NPROBE
+        logging.info("Loaded FAISS IVF index from file.")
     else:
-        INDEX = faiss.IndexFlatL2(EMBEDDING_DIMENSION)
-        CHUNK_EMBEDDINGS = EMBEDDER.encode(ALL_CHUNKS, convert_to_numpy=True)
-        INDEX.add(CHUNK_EMBEDDINGS)
-        np.save(EMBEDDING_FILE, CHUNK_EMBEDDINGS)
-        faiss.write_index(INDEX, FAISS_INDEX_FILE)
-        logging.info("Created and saved embeddings and FAISS index.")
+        raise RuntimeError("FAISS index file is missing! Ensure that training is done beforehand.")
 
     end_time = time.time()
     logging.info(f"Models and data loaded in {end_time - start_time:.2f} seconds.")
@@ -71,7 +74,9 @@ except Exception as e:
     logging.exception("Error during eager loading:")
     raise
 
-# Fungsi Utilitas
+# ===============================
+# 3. FUNGSI UTILITAS
+# ===============================
 def extract_keywords(question, top_n=5):
     vectorizer = TfidfVectorizer()
     tfidf_matrix = vectorizer.fit_transform([question])
@@ -99,14 +104,16 @@ def answer_question(question: str, chunks: list[str], index: faiss.Index, embedd
         candidates = [chunks[i] for i in I[0]]
 
         pairs = [(question, chunk) for chunk in candidates]
-        scores = cross_encoder_model.predict(pairs, batch_size=8)
+        scores = cross_encoder_model.predict(pairs, batch_size=4)
         top_indices = np.argsort(scores)[::-1][:top_n]
         return "\n".join([candidates[i] for i in top_indices])
     except Exception as e:
         logging.exception(f"Error in answer_question: {e}")
         return "Error: Terjadi kesalahan dalam memproses pertanyaan."
 
-# Model Request
+# ===============================
+# 4. FASTAPI ENDPOINTS
+# ===============================
 class QuestionRequest(BaseModel):
     question: str
 
@@ -116,7 +123,7 @@ async def ask_chatbot(request: QuestionRequest):
         logging.info(f"Received question: {request.question}")
         if not request.question:
             raise HTTPException(status_code=400, detail="No question provided")
-        raw_answer = answer_question(request.question, ALL_CHUNKS, INDEX, EMBEDDER, CROSS_ENCODER_MODEL, top_n=3)
+        raw_answer = answer_question(request.question, ALL_CHUNKS, INDEX_FAISS, EMBEDDER, CROSS_ENCODER_MODEL, top_n=3)
         return {"answer": post_process_answer(raw_answer)}
     except HTTPException as e:
         raise e
@@ -128,6 +135,9 @@ async def ask_chatbot(request: QuestionRequest):
 def read_root():
     return {"message": "API is running!"}
 
+# ===============================
+# 5. MENJALANKAN SERVER
+# ===============================
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
     logging.info(f"Starting server on port {port}")
