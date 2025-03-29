@@ -71,7 +71,7 @@ try:
 
     logging.info(f"📂 Cache folder contents: {os.listdir(MODEL_CACHE_PATH)}")
     logging.info("✅ Models loaded.")
-    
+
     if os.path.exists(EMBEDDING_FILE) and os.path.exists(FAISS_INDEX_FILE):
         CHUNK_EMBEDDINGS = np.load(EMBEDDING_FILE)
         INDEX_FAISS = faiss.read_index(FAISS_INDEX_FILE)
@@ -93,7 +93,7 @@ except Exception as e:
 
 # FastAPI app
 app = FastAPI()
-origins = ["http://localhost", "http://localhost:8000", "https://your-frontend-domain.com"]
+origins = ["http://localhost", "http://localhost:8000", "https://aichatbot.daraspace.com"]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
