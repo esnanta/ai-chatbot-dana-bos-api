@@ -156,6 +156,16 @@ async def ask_chatbot(request: QuestionRequest):
         logging.exception("❌ Error processing request:")
         raise HTTPException(status_code=500, detail="An error occurred processing the request")
 
+@app.get("/logs")
+async def get_logs():
+    try:
+        with open("app.log", "r", encoding="utf-8") as log_file:
+            logs = log_file.readlines()[-100:]  # Ambil 100 baris terakhir
+        return {"logs": logs}
+    except Exception as e:
+        logging.exception("❌ Error reading log file:")
+        raise HTTPException(status_code=500, detail="Failed to retrieve logs")
+
 @app.get("/")
 def read_root():
     logging.info("✅ Root endpoint accessed.")
