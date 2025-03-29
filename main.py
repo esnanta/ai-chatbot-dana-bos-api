@@ -49,6 +49,8 @@ EMBEDDING_DIMENSION = 384
 EMBEDDING_FILE = os.path.join(BASE_DIR, "chunk_embeddings.npy")
 FAISS_INDEX_FILE = os.path.join(BASE_DIR, "faiss_index.bin")
 NPROBE = 5
+# ./model_cache tmp folder
+MODEL_CACHE_PATH = "/var/data"
 
 # ===============================
 # 2. MUAT DATA & MODEL (CACHING)
@@ -61,10 +63,10 @@ try:
         ALL_CHUNKS = json.load(f)
         logging.info(f"✅ Loaded {len(ALL_CHUNKS)} chunks.")
 
-    EMBEDDER = SentenceTransformer("paraphrase-MiniLM-L3-v2", cache_folder="./model_cache")
+    EMBEDDER = SentenceTransformer("paraphrase-MiniLM-L3-v2", cache_folder=MODEL_CACHE_PATH)
     logging.info("✅ SentenceTransformer model loaded.")
 
-    CROSS_ENCODER_MODEL = CrossEncoder("cross-encoder/ms-marco-TinyBERT-L-6", cache_folder="./model_cache")
+    CROSS_ENCODER_MODEL = CrossEncoder("cross-encoder/ms-marco-TinyBERT-L-6", cache_folder=MODEL_CACHE_PATH)
     logging.info("✅ CrossEncoder model loaded.")
 
     if os.path.exists(EMBEDDING_FILE) and os.path.exists(FAISS_INDEX_FILE):
