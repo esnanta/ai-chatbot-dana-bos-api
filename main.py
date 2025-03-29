@@ -124,7 +124,7 @@ def answer_question(question: str, top_n: int = 3) -> str:
         return "Maaf, saya tidak dapat menemukan jawaban yang sesuai."
 
     pairs = [(question, chunk) for chunk in candidates]
-    scores = CROSS_ENCODER_MODEL.predict(pairs, batch_size=8)
+    scores = CROSS_ENCODER_MODEL.predict(pairs)
     top_indices = np.argsort(scores)[::-1][:top_n]
     return "<br><br>".join([candidates[i] for i in top_indices])
 
