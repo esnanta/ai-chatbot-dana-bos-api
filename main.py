@@ -10,7 +10,6 @@ import torch
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from nltk import sent_tokenize
 from sentence_transformers import SentenceTransformer, CrossEncoder
 from pydantic import BaseModel
 import time
@@ -38,6 +37,8 @@ logging.basicConfig(
         logging.FileHandler("app.log", mode="a")
     ]
 )
+
+nltk.data.path.append(NLTK_DATA_PATH)
 
 # Cek dan download NLTK dataset jika belum ada
 def ensure_nltk_data(package: str):
@@ -67,8 +68,10 @@ try:
     EMBEDDER = SentenceTransformer("paraphrase-MiniLM-L3-v2", cache_folder=MODEL_CACHE_PATH, device=device)
     CROSS_ENCODER_MODEL = CrossEncoder("cross-encoder/ms-marco-TinyBERT-L-6", cache_folder=MODEL_CACHE_PATH,
                                        device=device)
-    logging.info("✅ Models loaded.")
 
+    logging.info(f"📂 Cache folder contents: {os.listdir(MODEL_CACHE_PATH)}")
+    logging.info("✅ Models loaded.")
+    
     if os.path.exists(EMBEDDING_FILE) and os.path.exists(FAISS_INDEX_FILE):
         CHUNK_EMBEDDINGS = np.load(EMBEDDING_FILE)
         INDEX_FAISS = faiss.read_index(FAISS_INDEX_FILE)
