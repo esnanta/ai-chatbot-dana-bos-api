@@ -61,10 +61,10 @@ try:
         ALL_CHUNKS = json.load(f)
         logging.info(f"✅ Loaded {len(ALL_CHUNKS)} chunks.")
 
-    EMBEDDER = SentenceTransformer("paraphrase-MiniLM-L3-v2")
+    EMBEDDER = SentenceTransformer("paraphrase-MiniLM-L3-v2", cache_folder="./model_cache")
     logging.info("✅ SentenceTransformer model loaded.")
 
-    CROSS_ENCODER_MODEL = CrossEncoder("cross-encoder/ms-marco-TinyBERT-L-6")
+    CROSS_ENCODER_MODEL = CrossEncoder("cross-encoder/ms-marco-TinyBERT-L-6", cache_folder="./model_cache")
     logging.info("✅ CrossEncoder model loaded.")
 
     if os.path.exists(EMBEDDING_FILE) and os.path.exists(FAISS_INDEX_FILE):
