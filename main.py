@@ -1,7 +1,6 @@
 import os
 import json
 import numpy as np
-import uvicorn
 import nltk
 import logging
 import functools
