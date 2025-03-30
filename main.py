@@ -145,6 +145,15 @@ async def ask_chatbot(request: QuestionRequest):
         logging.exception("❌ Error processing request:")
         raise HTTPException(status_code=500, detail="An error occurred processing the request")
 
+@app.get("/logs")
+async def get_logs():
+    try:
+        with open("app.log", "r", encoding="utf-8") as log_file:
+            logs = log_file.readlines()
+        return {"logs": logs[-50:]}  # Ambil 50 baris terakhir untuk menghindari terlalu banyak data
+    except Exception as e:
+        logging.exception("❌ Error reading log file:")
+        raise HTTPException(status_code=500, detail="An error occurred while reading the log file")
 
 @app.get("/health")
 async def health_check():
