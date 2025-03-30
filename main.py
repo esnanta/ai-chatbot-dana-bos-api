@@ -16,7 +16,7 @@ import time
 
 # Konstanta
 NLTK_DATA_PATH = "/var/data/nltk_data"
-MODEL_CACHE_PATH = "/var/data"
+MODEL_DATA_PATH = "/var/data"
 BASE_DIR = "knowledge_base"
 CHUNKS_FILE = os.path.join(BASE_DIR, "chunks.json")
 EMBEDDING_DIMENSION = 384
@@ -26,7 +26,7 @@ NPROBE = 5
 
 # Pastikan direktori ada
 os.makedirs(NLTK_DATA_PATH, exist_ok=True)
-os.makedirs(MODEL_CACHE_PATH, exist_ok=True)
+os.makedirs(MODEL_DATA_PATH, exist_ok=True)
 
 # Konfigurasi Logging
 logging.basicConfig(
@@ -65,11 +65,11 @@ try:
         ALL_CHUNKS = json.load(f)
         logging.info(f"✅ Loaded {len(ALL_CHUNKS)} chunks.")
 
-    EMBEDDER = SentenceTransformer("paraphrase-MiniLM-L3-v2", cache_folder=MODEL_CACHE_PATH, device=device)
-    CROSS_ENCODER_MODEL = CrossEncoder("cross-encoder/ms-marco-TinyBERT-L-6", cache_folder=MODEL_CACHE_PATH,
+    EMBEDDER = SentenceTransformer("paraphrase-MiniLM-L3-v2", cache_folder=MODEL_DATA_PATH, device=device)
+    CROSS_ENCODER_MODEL = CrossEncoder("cross-encoder/ms-marco-TinyBERT-L-6", cache_folder=MODEL_DATA_PATH,
                                        device=device)
 
-    logging.info(f"📂 Cache folder contents: {os.listdir(MODEL_CACHE_PATH)}")
+    logging.info(f"📂 Cache folder contents: {os.listdir(MODEL_DATA_PATH)}")
     logging.info("✅ Models loaded.")
 
     if os.path.exists(EMBEDDING_FILE) and os.path.exists(FAISS_INDEX_FILE):
@@ -156,7 +156,8 @@ def read_root():
     return {"message": "API is running!"}
 
 
-if __name__ == "__main__":
-    port = int(os.getenv("PORT", 8000))
-    logging.info(f"🚀 Starting server on port {port}")
-    uvicorn.run(app, host="0.0.0.0", port=port)
+# DISABLE THIS FOR RENDER
+#if __name__ == "__main__":
+#    port = int(os.getenv("PORT", 8000))
+#    logging.info(f"🚀 Starting server on port {port}")
+#   uvicorn.run(app, host="0.0.0.0", port=port)
