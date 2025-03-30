@@ -53,38 +53,44 @@ ensure_nltk_data('punkt_tab')
 device = "cuda" if torch.cuda.is_available() else "cpu"
 logging.info(f"✅ Using device: {device}")
 
-# Muat Model
-logging.info("Loading models and data...")
-start_time = time.time()
+# Lazy Loading Variables
+ALL_CHUNKS = None
+EMBEDDER = None
+CROSS_ENCODER_MODEL = None
+CHUNK_EMBEDDINGS = None
 
-try:
-    with open(CHUNKS_FILE, "r", encoding="utf-8") as f:
-        ALL_CHUNKS = json.load(f)
-        logging.info(f"✅ Loaded {len(ALL_CHUNKS)} chunks.")
 
-    EMBEDDER = SentenceTransformer("all-MiniLM-L6-v2", cache_folder=MODEL_DATA_PATH, device=device)
-    CROSS_ENCODER_MODEL = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2", cache_folder=MODEL_DATA_PATH,
-                                       device=device)
+def load_models():
+    global ALL_CHUNKS, EMBEDDER, CROSS_ENCODER_MODEL, CHUNK_EMBEDDINGS
+    if ALL_CHUNKS is None or EMBEDDER is None or CROSS_ENCODER_MODEL is None or CHUNK_EMBEDDINGS is None:
+        logging.info("🔄 Loading models and data...")
+        start_time = time.time()
 
-    logging.info(f"📂 Cache folder contents: {os.listdir(MODEL_DATA_PATH)}")
-    logging.info("✅ Models loaded.")
+        with open(CHUNKS_FILE, "r", encoding="utf-8") as f:
+            ALL_CHUNKS = json.load(f)
+            logging.info(f"✅ Loaded {len(ALL_CHUNKS)} chunks.")
 
-    if os.path.exists(EMBEDDING_FILE):
-        CHUNK_EMBEDDINGS = np.load(EMBEDDING_FILE)
-        logging.info(f"✅ Loaded {CHUNK_EMBEDDINGS.shape[0]} embeddings.")
-    else:
-        raise RuntimeError("❌ Embedding file is missing!")
+        EMBEDDER = SentenceTransformer("all-MiniLM-L6-v2", cache_folder=MODEL_DATA_PATH, device=device)
+        CROSS_ENCODER_MODEL = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2", cache_folder=MODEL_DATA_PATH,
+                                           device=device)
 
-    end_time = time.time()
-    logging.info(f"✅ Models and data loaded in {end_time - start_time:.2f} seconds.")
-except Exception as e:
-    logging.exception("❌ Error during model loading:")
-    raise
+        if os.path.exists(EMBEDDING_FILE):
+            CHUNK_EMBEDDINGS = np.load(EMBEDDING_FILE)
+            logging.info(f"✅ Loaded {CHUNK_EMBEDDINGS.shape[0]} embeddings.")
+        else:
+            raise RuntimeError("❌ Embedding file is missing!")
+
+        end_time = time.time()
+        logging.info(f"✅ Models and data loaded in {end_time - start_time:.2f} seconds.")
+
 
 # FastAPI app
 app = FastAPI()
-origins = ["http://localhost", "http://localhost:8000", "https://aichatbot.daraspace.com",
+origins = ["http://localhost",
+           "http://localhost:8000",
+           "https://aichatbot.daraspace.com",
            "http://aichatbot.daraspace.com"]
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -112,6 +118,7 @@ def cache_question_embedding(question: str):
 
 
 def answer_question(question: str, top_n: int = 3) -> str:
+    load_models()
     logging.info(f"🔍 Processing question: {question}")
     question_embedding = cache_question_embedding(question)
     candidates = find_top_chunks(question_embedding)
