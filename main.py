@@ -65,8 +65,8 @@ try:
         ALL_CHUNKS = json.load(f)
         logging.info(f"✅ Loaded {len(ALL_CHUNKS)} chunks.")
 
-    EMBEDDER = SentenceTransformer("paraphrase-MiniLM-L3-v2", cache_folder=MODEL_DATA_PATH, device=device)
-    CROSS_ENCODER_MODEL = CrossEncoder("cross-encoder/ms-marco-TinyBERT-L-6", cache_folder=MODEL_DATA_PATH,
+    EMBEDDER = SentenceTransformer("all-MiniLM-L6-v2", cache_folder=MODEL_DATA_PATH, device=device)
+    CROSS_ENCODER_MODEL = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2", cache_folder=MODEL_DATA_PATH,
                                        device=device)
 
     logging.info(f"📂 Cache folder contents: {os.listdir(MODEL_DATA_PATH)}")
