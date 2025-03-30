@@ -1,6 +1,5 @@
 import os
 import json
-import faiss
 import numpy as np
 import uvicorn
 import nltk
@@ -21,8 +20,6 @@ BASE_DIR = "knowledge_base"
 CHUNKS_FILE = os.path.join(BASE_DIR, "chunks.json")
 EMBEDDING_DIMENSION = 384
 EMBEDDING_FILE = os.path.join(BASE_DIR, "chunk_embeddings.npy")
-FAISS_INDEX_FILE = os.path.join(BASE_DIR, "faiss_index.bin")
-NPROBE = 5
 
 # Pastikan direktori ada
 os.makedirs(NLTK_DATA_PATH, exist_ok=True)
@@ -40,7 +37,7 @@ logging.basicConfig(
 
 nltk.data.path.append(NLTK_DATA_PATH)
 
-# Cek dan download NLTK dataset jika belum ada
+
 def ensure_nltk_data(package: str):
     try:
         nltk.data.find(f"tokenizers/{package}")
@@ -48,6 +45,7 @@ def ensure_nltk_data(package: str):
     except LookupError:
         logging.warning(f"⚠️ NLTK dataset '{package}' not found. Downloading...")
         nltk.download(package, download_dir=NLTK_DATA_PATH)
+
 
 ensure_nltk_data('punkt')
 ensure_nltk_data('punkt_tab')
@@ -72,18 +70,11 @@ try:
     logging.info(f"📂 Cache folder contents: {os.listdir(MODEL_DATA_PATH)}")
     logging.info("✅ Models loaded.")
 
-    if os.path.exists(EMBEDDING_FILE) and os.path.exists(FAISS_INDEX_FILE):
+    if os.path.exists(EMBEDDING_FILE):
         CHUNK_EMBEDDINGS = np.load(EMBEDDING_FILE)
-        INDEX_FAISS = faiss.read_index(FAISS_INDEX_FILE)
-
-        if CHUNK_EMBEDDINGS.shape[0] != INDEX_FAISS.ntotal:
-            logging.error("❌ FAISS index mismatch!")
-            raise RuntimeError("FAISS index and embedding file are not in sync!")
-
-        INDEX_FAISS.nprobe = NPROBE
-        logging.info(f"✅ Loaded FAISS index with {len(CHUNK_EMBEDDINGS)} embeddings.")
+        logging.info(f"✅ Loaded {CHUNK_EMBEDDINGS.shape[0]} embeddings.")
     else:
-        raise RuntimeError("❌ FAISS index file is missing!")
+        raise RuntimeError("❌ Embedding file is missing!")
 
     end_time = time.time()
     logging.info(f"✅ Models and data loaded in {end_time - start_time:.2f} seconds.")
@@ -93,7 +84,8 @@ except Exception as e:
 
 # FastAPI app
 app = FastAPI()
-origins = ["http://localhost", "http://localhost:8000", "https://aichatbot.daraspace.com","http://aichatbot.daraspace.com"]
+origins = ["http://localhost", "http://localhost:8000", "https://aichatbot.daraspace.com",
+           "http://aichatbot.daraspace.com"]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -103,22 +95,28 @@ app.add_middleware(
 )
 
 
+# Cosine Similarity Function
+def cosine_similarity(vec1, vec2):
+    return np.dot(vec1, vec2) / (np.linalg.norm(vec1) * np.linalg.norm(vec2))
+
+
+def find_top_chunks(question_embedding, top_n=6):
+    similarities = [cosine_similarity(question_embedding, emb) for emb in CHUNK_EMBEDDINGS]
+    top_indices = np.argsort(similarities)[::-1][:top_n]
+    return [ALL_CHUNKS[i] for i in top_indices]
+
+
 # Caching & Utilitas
 @functools.lru_cache(maxsize=100)
 def cache_question_embedding(question: str):
-    return EMBEDDER.encode([question], convert_to_numpy=True)
-
-
-@functools.lru_cache(maxsize=100)
-def cache_faiss_search(question: str):
-    question_embedding = cache_question_embedding(question)
-    D, I = INDEX_FAISS.search(question_embedding, 6)
-    return [ALL_CHUNKS[i] for i in I[0] if i >= 0]
+    return EMBEDDER.encode(question, convert_to_numpy=True)
 
 
 def answer_question(question: str, top_n: int = 3) -> str:
     logging.info(f"🔍 Processing question: {question}")
-    candidates = cache_faiss_search(question)
+    question_embedding = cache_question_embedding(question)
+    candidates = find_top_chunks(question_embedding)
+
     if not candidates:
         logging.warning("⚠️ No relevant chunks found for the question.")
         return "Maaf, saya tidak dapat menemukan jawaban yang sesuai."
@@ -145,6 +143,7 @@ async def ask_chatbot(request: QuestionRequest):
         logging.exception("❌ Error processing request:")
         raise HTTPException(status_code=500, detail="An error occurred processing the request")
 
+
 @app.get("/logs")
 async def get_logs():
     try:
@@ -155,6 +154,7 @@ async def get_logs():
         logging.exception("❌ Error reading log file:")
         raise HTTPException(status_code=500, detail="An error occurred while reading the log file")
 
+
 @app.get("/health")
 async def health_check():
     return {"status": "ok", "device": device}
@@ -163,10 +163,3 @@ async def health_check():
 @app.get("/")
 def read_root():
     return {"message": "API is running!"}
-
-
-# DISABLE THIS FOR RENDER
-#if __name__ == "__main__":
-#    port = int(os.getenv("PORT", 8000))
-#    logging.info(f"🚀 Starting server on port {port}")
-#   uvicorn.run(app, host="0.0.0.0", port=port)
