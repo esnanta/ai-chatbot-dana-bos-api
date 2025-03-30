@@ -93,7 +93,7 @@ except Exception as e:
 
 # FastAPI app
 app = FastAPI()
-origins = ["http://localhost", "http://localhost:8000", "https://aichatbot.daraspace.com"]
+origins = ["http://localhost", "http://localhost:8000", "https://aichatbot.daraspace.com","http://aichatbot.daraspace.com"]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
