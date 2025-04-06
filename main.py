@@ -64,6 +64,8 @@ def ensure_nltk_data(package: str):
 
 # --- Pengecekan Awal ---
 ensure_nltk_data('punkt') # Untuk sent_tokenize
+ensure_nltk_data('punkt_tab') # Untuk sent_tokenize
+
 device = "cuda" if torch.cuda.is_available() else "cpu"
 logging.info(f"✅ Using device: {device}")
 
@@ -73,9 +75,8 @@ embedder: Optional[SentenceTransformer] = None # Bi-Encoder (Retriever)
 cross_encoder: Optional[CrossEncoder] = None   # Cross-Encoder (Re-ranker)
 chunk_embeddings: Optional[np.ndarray] = None
 
-# --- Fungsi Loading Resources ---
 def load_resources():
-    """Loads Bi-Encoder, Cross-Encoder, chunks, and embeddings."""
+
     global all_chunks, embedder, cross_encoder, chunk_embeddings
     logging.info("🔄 Loading models and data (Bi-Encoder + Cross-Encoder)...")
     start_time = time.time()
@@ -123,7 +124,7 @@ def load_resources():
         logging.info(f"💾 Loading Cross-Encoder model: '{selected_cross_encoder_model}' (cache: {MODEL_CACHE_PATH})...")
         cross_encoder = CrossEncoder(
             selected_cross_encoder_model,
-            max_length=512, # Sesuaikan jika perlu
+            max_length=512,
             cache_folder=MODEL_CACHE_PATH,
             device=device
         )
@@ -318,20 +319,23 @@ def answer_question(question: str, retriever_top_k: int = RETRIEVER_TOP_K, final
 
 
     # 3. Gabungkan Jawaban Final
-    final_chunk_texts = [chunk_info["text"] for chunk_info in final_chunks_info]
+    final_answer_parts = []
+    separator = "\n\n====================\n\n"
+    logging.debug("   Formatting final answer with separators:")
+    for i, chunk_info in enumerate(final_chunks_info):
+        chunk_text = chunk_info["text"].strip()
+        header = f"[Sumber Konteks {i+1}]"
+        formatted_part = f"{header}\n{chunk_text}" # Gabungkan header dan teks chunk
+        final_answer_parts.append(formatted_part)
+        logging.debug(f"     Part {i+1} added (Length: {len(chunk_text)} chars)")
 
-    if not final_chunk_texts:
-        logging.warning("   -> No relevant chunks remained after processing.")
-        # Berikan pesan yang sama seperti jika tidak ada hasil awal
-        return "Maaf, saya tidak dapat menemukan informasi yang relevan dengan pertanyaan Anda saat ini."
-
-    raw_answer = "\n\n".join(final_chunk_texts)
-    # logging.debug(f"   Raw answer constructed: {raw_answer[:200]}...") # Uncomment for debugging
+    # Gabungkan semua bagian yang sudah diformat menggunakan separator
+    raw_answer_with_separators = separator.join(final_answer_parts)
 
     end_process_time = time.time()
     logging.info(f"✅ Question processed (Retrieval + Re-ranking/Selection) in {end_process_time - start_process_time:.2f} seconds.")
 
-    return raw_answer
+    return raw_answer_with_separators
 
 # --- Fungsi Post-Processing Jawaban (Sama seperti sebelumnya) ---
 def post_process_answer(answer: str) -> str:
