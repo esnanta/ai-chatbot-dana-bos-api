@@ -84,7 +84,7 @@ def load_resources():
     # --- Pilih Model Bi-Encoder (Embedder) ---
     # Pastikan ini SAMA dengan model yang digunakan untuk membuat EMBEDDING_FILE
     # selected_embedder_model = "paraphrase-MiniLM-L3-v2"
-    selected_embedder_model = "all-MiniLM-L6-v2"
+    selected_embedder_model = "sentence-transformers/all-MiniLM-L6-v2"
     # selected_embedder_model = "multi-qa-MiniLM-L6-cos-v1"
     logging.info(f"Selected Bi-Encoder (Embedder) model: {selected_embedder_model}")
     logging.warning(f"🚨 ENSURE '{EMBEDDING_FILE}' was generated using '{selected_embedder_model}'!")
