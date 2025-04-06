@@ -22,7 +22,7 @@ from huggingface_hub.errors import HfHubHTTPError
 
 logging.info("Attempting explicit Hugging Face login...")
 print("Attempting explicit Hugging Face login...")
-hf_token = os.environ.get("HF_TOKEN")
+hf_token = os.environ.get("HF_TOKEN_READ")
 if hf_token:
     logging.info("HF_TOKEN environment variable found.")
     print("HF_TOKEN environment variable found.")
