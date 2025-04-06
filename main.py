@@ -3,18 +3,17 @@ import json
 import numpy as np
 import nltk
 import logging
-import functools # Untuk lru_cache
+import functools
 import torch
 import time
-import re # Untuk post_process_answer
+import re
 
-from typing import List, Dict, Optional, Tuple # Tambahkan Tuple
+from typing import List, Dict, Optional
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-# Import SentenceTransformer, CrossEncoder, dan util
 from sentence_transformers import SentenceTransformer, CrossEncoder, util
-from nltk.tokenize import sent_tokenize # Untuk post_process_answer
+from nltk.tokenize import sent_tokenize
 from pydantic import BaseModel
 
 from huggingface_hub import login
@@ -46,16 +45,16 @@ else:
 
 
 # --- Konstanta ---
-RENDER_DATA_DIR = os.environ.get("RENDER_DATA_DIR", "/var/data") # Gunakan env var jika diset
-NLTK_DATA_PATH = os.path.join(RENDER_DATA_DIR, "nltk_data")
-MODEL_CACHE_PATH = os.path.join(RENDER_DATA_DIR, "model_cache")
-LOG_FILE_PATH = os.path.join(RENDER_DATA_DIR, "logs", "app.log")
+# Gunakan env var jika diset
+OS_DATA_DIR = os.environ.get("OS_DATA_DIR", "/var/data")
+NLTK_DATA_PATH = os.path.join(OS_DATA_DIR, "nltk_data")
+MODEL_CACHE_PATH = os.path.join(OS_DATA_DIR, "model_cache")
+LOG_FILE_PATH = os.path.join(OS_DATA_DIR, "logs", "app.log")
 
 KNOWLEDGE_BASE_DIR = "knowledge_base"
 CHUNKS_FILE = os.path.join(KNOWLEDGE_BASE_DIR, "chunks.json")
 EMBEDDING_FILE = os.path.join(KNOWLEDGE_BASE_DIR, "chunk_embeddings.npy")
 
-# --- Parameter Tambahan ---
 # Berapa banyak kandidat yang diambil oleh bi-encoder untuk di-rerank oleh cross-encoder
 RETRIEVER_TOP_K = int(os.environ.get("RETRIEVER_TOP_K", 10))
 # Berapa banyak hasil akhir yang dikembalikan setelah re-ranking
@@ -90,14 +89,12 @@ def ensure_nltk_data(package: str):
             logging.error(f"❌ Failed to download NLTK dataset '{package}': {e}", exc_info=True)
             raise RuntimeError(f"Could not download NLTK data: {package}") from e
 
-# --- Pengecekan Awal ---
-ensure_nltk_data('punkt') # Untuk sent_tokenize
-ensure_nltk_data('punkt_tab') # Untuk sent_tokenize
+ensure_nltk_data('punkt')
+ensure_nltk_data('punkt_tab')
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 logging.info(f"✅ Using device: {device}")
 
-# --- Global Variables ---
 all_chunks: Optional[List[str]] = None
 embedder: Optional[SentenceTransformer] = None # Bi-Encoder (Retriever)
 cross_encoder: Optional[CrossEncoder] = None   # Cross-Encoder (Re-ranker)
@@ -111,15 +108,12 @@ def load_resources():
 
     # --- Pilih Model Bi-Encoder (Embedder) ---
     # Pastikan ini SAMA dengan model yang digunakan untuk membuat EMBEDDING_FILE
-    # selected_embedder_model = "paraphrase-MiniLM-L3-v2"
-    selected_embedder_model = "sentence-transformers/all-MiniLM-L6-v2"
-    # selected_embedder_model = "multi-qa-MiniLM-L6-cos-v1"
+    selected_embedder_model = "multi-qa-MiniLM-L6-cos-v1"
     logging.info(f"Selected Bi-Encoder (Embedder) model: {selected_embedder_model}")
     logging.warning(f"🚨 ENSURE '{EMBEDDING_FILE}' was generated using '{selected_embedder_model}'!")
 
     # --- Pilih Model Cross-Encoder (Re-ranker) ---
-    # Model Cross-Encoder yang populer untuk re-ranking
-    selected_cross_encoder_model = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    selected_cross_encoder_model = "cross-encoder/ms-marco-MiniLM-L-6-v2" # populer untuk re-ranking
     logging.info(f"Selected Cross-Encoder (Re-ranker) model: {selected_cross_encoder_model}")
 
     # Load Chunks
@@ -348,11 +342,11 @@ def answer_question(question: str, retriever_top_k: int = RETRIEVER_TOP_K, final
 
     # 3. Gabungkan Jawaban Final
     final_answer_parts = []
-    separator = "\n\n====================\n\n"
+    separator = "<br><br>===================="
     logging.debug("   Formatting final answer with separators:")
     for i, chunk_info in enumerate(final_chunks_info):
         chunk_text = chunk_info["text"].strip()
-        header = f"[Sumber Konteks {i+1}]"
+        header = f"[Konteks {i+1}]<br>"
         formatted_part = f"{header}\n{chunk_text}" # Gabungkan header dan teks chunk
         final_answer_parts.append(formatted_part)
         logging.debug(f"     Part {i+1} added (Length: {len(chunk_text)} chars)")
