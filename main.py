@@ -17,7 +17,8 @@ from sentence_transformers import SentenceTransformer, CrossEncoder, util
 from nltk.tokenize import sent_tokenize # Untuk post_process_answer
 from pydantic import BaseModel
 
-from huggingface_hub import login, HfHubHTTPError # Import login dan error spesifik
+from huggingface_hub import login
+from huggingface_hub.errors import HfHubHTTPError
 
 logging.info("Attempting explicit Hugging Face login...")
 print("Attempting explicit Hugging Face login...")
