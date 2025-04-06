@@ -17,6 +17,33 @@ from sentence_transformers import SentenceTransformer, CrossEncoder, util
 from nltk.tokenize import sent_tokenize # Untuk post_process_answer
 from pydantic import BaseModel
 
+from huggingface_hub import login, HfHubHTTPError # Import login dan error spesifik
+
+logging.info("Attempting explicit Hugging Face login...")
+print("Attempting explicit Hugging Face login...")
+hf_token = os.environ.get("HF_TOKEN")
+if hf_token:
+    logging.info("HF_TOKEN environment variable found.")
+    print("HF_TOKEN environment variable found.")
+    try:
+        # Coba login menggunakan token dari environment variable
+        login(token=hf_token)
+        logging.info("✅ Explicit Hugging Face login successful.")
+        print("✅ Explicit Hugging Face login successful.")
+    except HfHubHTTPError as e: # Tangkap error login spesifik
+        logging.error(f"!!! Explicit Hugging Face login failed: {e} !!!")
+        print(f"!!! PRINT ERROR Explicit Hugging Face login failed: {e} !!!")
+        # Anda bisa memutuskan apakah akan melanjutkan atau menghentikan di sini
+        # raise RuntimeError("Failed to login to Hugging Face Hub") from e
+        logging.warning("Proceeding without guaranteed authenticated session.")
+    except Exception as e:
+        logging.exception("!!! Unexpected error during explicit Hugging Face login !!!")
+        print(f"!!! PRINT ERROR Unexpected error during explicit Hugging Face login: {e} !!!")
+else:
+    logging.warning("HF_TOKEN environment variable not found. Proceeding with anonymous access.")
+    print("HF_TOKEN environment variable not found. Proceeding with anonymous access.")
+
+
 # --- Konstanta ---
 RENDER_DATA_DIR = os.environ.get("RENDER_DATA_DIR", "/var/data") # Gunakan env var jika diset
 NLTK_DATA_PATH = os.path.join(RENDER_DATA_DIR, "nltk_data")
