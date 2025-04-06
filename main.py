@@ -33,7 +33,6 @@ if hf_token:
     except HfHubHTTPError as e: # Tangkap error login spesifik
         logging.error(f"!!! Explicit Hugging Face login failed: {e} !!!")
         print(f"!!! PRINT ERROR Explicit Hugging Face login failed: {e} !!!")
-        # Anda bisa memutuskan apakah akan melanjutkan atau menghentikan di sini
         # raise RuntimeError("Failed to login to Hugging Face Hub") from e
         logging.warning("Proceeding without guaranteed authenticated session.")
     except Exception as e:
@@ -153,7 +152,6 @@ def load_resources():
         logging.info("✅ Cross-Encoder model loaded.")
     except Exception as e:
         logging.error(f"❌ Error loading Cross-Encoder model: {e}", exc_info=True)
-        # Anda bisa memilih untuk melanjutkan tanpa cross-encoder atau gagal total
         # raise RuntimeError(f"Failed to load Cross-Encoder: {selected_cross_encoder_model}") from e
         logging.warning("⚠️ Cross-Encoder loading failed. Proceeding without re-ranking.")
         cross_encoder = None # Set ke None jika gagal
@@ -298,8 +296,6 @@ def answer_question(question: str, retriever_top_k: int = RETRIEVER_TOP_K, final
     if cross_encoder:
         logging.info(f"   Re-ranking top {len(retrieved_chunks_info)} candidates using Cross-Encoder...")
         start_rerank_time = time.time()
-
-        # Siapkan pasangan [pertanyaan, chunk_teks]
         cross_inp = [[question, chunk_info["text"]] for chunk_info in retrieved_chunks_info]
 
         try:
@@ -469,9 +465,3 @@ async def health_check():
 def read_root():
     """Root endpoint providing a welcome message."""
     return {"message": "DocuQuery (with Cross-Encoder) is running!"}
-
-# --- Untuk menjalankan dengan uvicorn (opsional, jika dijalankan langsung) ---
-# if __name__ == "__main__":
-#     import uvicorn
-#     logging.info("Starting Uvicorn server...")
-#     uvicorn.run(app, host="0.0.0.0", port=8000)
